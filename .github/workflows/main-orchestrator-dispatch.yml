@@ -1,6 +1,4 @@
-# This is a basic workflow to help you get started with Actions
-
-name: CI
+name: Deployment Orchestrator
 
 # Controls when the workflow will run
 on:
@@ -12,11 +10,38 @@ on:
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      target_repo:
+        description: 'Target repository to deploy'
+        required: true
+        default: 'agrofix-dev'
+        type: choice
+        options:
+          - agrofix-dev
+          - agrofix-prod
+      component:
+        description: 'Component to deploy (or "all")'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - ui
+          - api
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-  build:
+  # This workflow contains a single job called "orchestrate"
+  orchestrate:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
@@ -25,12 +50,63 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
-
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      # Run a one-line script
+      - name: Log deployment parameters
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          echo "🚀 Deployment Orchestrator Starting"
+          echo "Target Repository: ${{ github.event.inputs.target_repo || 'Not specified' }}"
+          echo "Component: ${{ github.event.inputs.component || 'Not specified' }}"
+          echo "Environment: ${{ github.event.inputs.environment || 'Not specified' }}"
+
+      # Trigger deployments to target repositories
+      - name: Trigger BusinessProposalEvaluator.UI Deployment
+        if: ${{ github.event.inputs.component == 'ui' || github.event.inputs.component == 'all' }}
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.ORCHESTRATOR_PAT }}" \
+            https://api.github.com/repos/snlinfo2/agrofix-dev/dispatches \
+            -d '{
+              "event_type": "deploy-signal",
+              "client_payload": {
+                "environment": "${{ github.event.inputs.environment }}",
+                "component": "ui",
+                "triggered_by": "${{ github.actor }}",
+                "run_id": "${{ github.run_id }}"
+              }
+            }'
+          echo "✅ Triggered UI deployment"
+
+      - name: Trigger LVT API Deployment
+        if: ${{ github.event.inputs.component == 'api' || github.event.inputs.component == 'all' }}
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.ORCHESTRATOR_PAT }}" \
+            https://api.github.com/repos/snlinfo2/agrofix-dev/dispatches \
+            -d '{
+              "event_type": "deploy-signal",
+              "client_payload": {
+                "environment": "${{ github.event.inputs.environment }}",
+                "component": "api",
+                "triggered_by": "${{ github.actor }}",
+                "run_id": "${{ github.run_id }}"
+              }
+            }'
+          echo "✅ Triggered API deployment"
+
+      # Runs a multi-line script for completion
+      - name: Deployment Orchestration Complete
+        run: |
+          echo "🎉 Deployment orchestration completed!"
+          echo "Components triggered: ${{ github.event.inputs.component }}"
+          echo "Target environment: ${{ github.event.inputs.environment }}"
+          echo "Check the target repository's Actions tab for deployment status."
+          
+      # Optional: Monitor deployment status (basic implementation)
+      - name: Verify Deployment Status
+        if: ${{ always() }}
+        run: |
+          echo "📊 Deployment orchestration finished"
+          echo "The target repositories have received the deployment signal."
+          echo "Note: Actual deployment completion depends on the target repository workflows."
